@@ -10,6 +10,9 @@ if not defined PYTHON_EXE if exist "%~dp0..\env\python.exe" set "PYTHON_EXE=%~dp
 if not defined PYTHON_EXE if exist "%~dp0.venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
 if not defined PYTHON_EXE set "PYTHON_EXE=python"
 
+if exist "%~dp0.cache\hf-models\t5-base" set "FOUNDATION_T5_PATH=%~dp0.cache\hf-models\t5-base"
+if not defined FOUNDATION_T5_PATH if exist "%~dp0..\hf-models\t5-base" set "FOUNDATION_T5_PATH=%~dp0..\hf-models\t5-base"
+
 echo Foundation-1 is starting...
 echo Open the local URL printed below after the model finishes loading.
 echo.

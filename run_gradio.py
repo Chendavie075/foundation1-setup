@@ -29,7 +29,10 @@ def ensure_runtime_cache_dirs():
     hf_hub_cache = hf_home / "hub"
     tmp_dir = CACHE_ROOT / "tmp"
     numba_dir = CACHE_ROOT / "numba"
-    t5_dir = CACHE_ROOT / "hf-models" / "t5-base"
+    candidate_t5_dirs = [
+        CACHE_ROOT / "hf-models" / "t5-base",
+        REPO_ROOT.parent / "hf-models" / "t5-base",
+    ]
 
     for path in (hf_home, hf_hub_cache, tmp_dir, numba_dir):
         path.mkdir(parents=True, exist_ok=True)
@@ -42,8 +45,10 @@ def ensure_runtime_cache_dirs():
     os.environ["TMP"] = str(tmp_dir)
     os.environ["NUMBA_CACHE_DIR"] = str(numba_dir)
 
-    if t5_dir.is_dir():
-        os.environ.setdefault("FOUNDATION_T5_PATH", str(t5_dir))
+    for t5_dir in candidate_t5_dirs:
+        if t5_dir.is_dir():
+            os.environ.setdefault("FOUNDATION_T5_PATH", str(t5_dir))
+            break
 
 
 def patch_transformers_audio_imports():
