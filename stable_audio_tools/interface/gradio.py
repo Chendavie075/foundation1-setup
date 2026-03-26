@@ -8,13 +8,13 @@ import json
 import torch
 import torchaudio
 import random
-import hffs
 import math
 import re
+from pathlib import Path
 
 
 
-from aeiou.viz import audio_spectrogram_image
+from .aeiou import audio_spectrogram_image
 from einops import rearrange
 from safetensors.torch import load_file
 from torch.nn import functional as F
@@ -29,14 +29,23 @@ from ..inference.utils import prepare_audio
 from ..training.utils import copy_state_dict
 from .prompts import master_prompt_map
 
-import pretty_midi
-import matplotlib.pyplot as plt
-import librosa.display
-from basic_pitch.inference import predict_and_save, ICASSP_2022_MODEL_PATH
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = REPO_ROOT / "config.json"
+
+
+def resolve_repo_path(path_value):
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
+
 
 # Load config file
-with open("config.json") as config_file:
+with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
     config = json.load(config_file)
+
+config["models_directory"] = str(resolve_repo_path(config["models_directory"]))
+config["generations_directory"] = str(resolve_repo_path(config["generations_directory"]))
 
 model = None
 sample_rate = 32000
@@ -359,6 +368,8 @@ def amend_prompt(prompt, note, scale, bars, bpm):
     return f"{prompt}, {note} {scale}, {bars} bars, {bpm}BPM,"
 
 def convert_audio_to_midi(audio_path, output_dir):
+    from basic_pitch.inference import ICASSP_2022_MODEL_PATH, predict_and_save
+
     predict_and_save(
         [audio_path],
         output_directory=output_dir,
@@ -370,11 +381,12 @@ def convert_audio_to_midi(audio_path, output_dir):
     )
 
 def plot_piano_roll(pm, start_pitch, end_pitch, fs=100):
+    import matplotlib.pyplot as plt
+
     plt.figure(figsize=(12, 6))
     piano_roll = pm.get_piano_roll(fs=fs)[start_pitch:end_pitch]
-    librosa.display.specshow(piano_roll, hop_length=1, sr=fs, x_axis='time', y_axis='cqt_note',
-                             fmin=pretty_midi.note_number_to_hz(start_pitch))
-    plt.colorbar(format='%+2.0f dB')
+    plt.imshow(piano_roll, aspect="auto", origin="lower", interpolation="nearest")
+    plt.colorbar()
     plt.title('Piano Roll Visualization')
     plt.xlabel('Time (s)')
     plt.ylabel('Pitch')
@@ -594,6 +606,8 @@ def generate_cond(
             midi_output_path = None
 
         if midi_output_path is not None:
+            import pretty_midi
+
             midi_data = pretty_midi.PrettyMIDI(midi_output_path)
             print("MIDI file loaded successfully.")
             piano_roll_path = plot_piano_roll(midi_data, 21, 109)
@@ -641,6 +655,94 @@ def update_config_dropdown(selected_ckpt, ckpt_files):
     except Exception as e:
         print(f"Error updating config dropdown: {e}")  # Debugging output
         return gr.update(choices=["Error finding configs"], value="Error finding configs")
+
+def list_downloaded_model_rows():
+    models_dir = config["models_directory"]
+    os.makedirs(models_dir, exist_ok=True)
+    rows = []
+    for item in sorted(os.listdir(models_dir)):
+        full_path = os.path.join(models_dir, item)
+        if os.path.isdir(full_path):
+            rows.append([item, full_path])
+    return rows
+
+def get_curated_model_options():
+    options = []
+    for item in config.get("model_downloads", config.get("hffs", [])):
+        options.extend(item.get("options", []))
+    return list(dict.fromkeys(options))
+
+def get_model_allow_patterns(repo_id: str):
+    repo_id = repo_id.strip()
+    if repo_id == "RoyalCities/Foundation-1":
+        return [
+            "Foundation_1.safetensors",
+            "model_config.json",
+            "LICENSE*",
+            "README*",
+            "Master_Tag_Reference.md",
+        ]
+    return None
+
+def download_model_from_hf(repo_id: str):
+    from huggingface_hub import snapshot_download
+
+    repo_id = (repo_id or "").strip()
+    if not repo_id:
+        return "Enter a Hugging Face model id first.", list_downloaded_model_rows()
+
+    models_dir = config["models_directory"]
+    os.makedirs(models_dir, exist_ok=True)
+
+    local_dir = os.path.join(models_dir, repo_id.replace("/", "-"))
+    allow_patterns = get_model_allow_patterns(repo_id)
+
+    if os.path.isdir(local_dir) and os.listdir(local_dir):
+        return f"{repo_id} is already present at {local_dir}. Restart the app to load it.", list_downloaded_model_rows()
+
+    try:
+        snapshot_download(
+            repo_id=repo_id,
+            repo_type="model",
+            local_dir=local_dir,
+            allow_patterns=allow_patterns,
+        )
+    except Exception as exc:
+        return f"Download failed for {repo_id}: {exc}", list_downloaded_model_rows()
+
+    return f"Downloaded {repo_id} to {local_dir}. Restart the app to load it.", list_downloaded_model_rows()
+
+def render_download_models_ui():
+    curated_choices = get_curated_model_options()
+
+    gr.HTML(
+        "<h2>Download Models</h2>"
+        "<div>Download a Hugging Face model into the local <code>models</code> folder, then restart the app to load it.</div>"
+    )
+
+    with gr.Row():
+        repo_id = gr.Dropdown(
+            label="Hugging Face Model ID",
+            choices=curated_choices,
+            value=curated_choices[0] if curated_choices else None,
+            allow_custom_value=True,
+        )
+        download_button = gr.Button("Download", variant="primary")
+
+    status = gr.Markdown("")
+    downloaded_models = gr.Dataframe(
+        value=list_downloaded_model_rows,
+        headers=["folder", "path"],
+        datatype=["str", "str"],
+        label="Downloaded model folders",
+        interactive=False,
+    )
+
+    download_button.click(
+        fn=download_model_from_hf,
+        inputs=[repo_id],
+        outputs=[status, downloaded_models],
+    )
 
 def load_model_action(selected_ckpt, selected_config, ckpt_files, int4_requested: bool):
     global DEVICE, current_prompt_generator
@@ -1135,8 +1237,7 @@ def create_txt2audio_ui(model_config, initial_ckpt):
         with gr.Tab("Generation"):
             create_sampling_ui(model_config, initial_ckpt)
         with gr.Tab("Download Models"):
-            gr.HTML("<h2>Download</h2><div>Download a model and restart the app to apply.</div>")
-            hffs.from_config(config)
+            render_download_models_ui()
     return ui
 
 def create_diffusion_uncond_ui(model_config):
@@ -1310,8 +1411,8 @@ def create_ui(
         except IndexError:
             print("no default checkpoint.")
             with gr.Blocks() as ui:
-                gr.HTML("<h2>Initialize</h2><div>Download a model first, and restart the app.</div>")
-                hffs.from_config(config)
+                gr.HTML("<h2>Initialize</h2><div>Download a model first, then restart the app.</div>")
+                render_download_models_ui()
             return ui
 
     # Exactly one of: pretrained_name OR (model_config_path + ckpt_path)

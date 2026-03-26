@@ -2,6 +2,7 @@
 
 import torch
 import logging, warnings
+import os
 import string
 import typing as tp
 import gc
@@ -266,8 +267,15 @@ class T5Conditioner(Conditioner):
             enable_grad: bool = False,
             project_out: bool = False
     ):
-        assert t5_model_name in self.T5_MODELS, f"Unknown T5 model name: {t5_model_name}"
-        super().__init__(self.T5_MODEL_DIMS[t5_model_name], output_dim, project_out=project_out)
+        model_key = t5_model_name
+        if model_key not in self.T5_MODELS:
+            normalized = str(t5_model_name).replace("\\", "/").rstrip("/")
+            basename = normalized.split("/")[-1]
+            if basename in self.T5_MODELS:
+                model_key = basename
+            else:
+                raise AssertionError(f"Unknown T5 model name: {t5_model_name}")
+        super().__init__(self.T5_MODEL_DIMS[model_key], output_dim, project_out=project_out)
         
         from transformers import T5EncoderModel, AutoTokenizer
 
@@ -280,10 +288,15 @@ class T5Conditioner(Conditioner):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             try:
+                model_source = t5_model_name
+                local_override = os.environ.get("FOUNDATION_T5_PATH", "").strip()
+                if local_override and os.path.isdir(local_override):
+                    model_source = local_override
+
                 # self.tokenizer = T5Tokenizer.from_pretrained(t5_model_name, model_max_length = max_length)
                 # model = T5EncoderModel.from_pretrained(t5_model_name, max_length=max_length).train(enable_grad).requires_grad_(enable_grad)
-                self.tokenizer = AutoTokenizer.from_pretrained(t5_model_name)
-                model = T5EncoderModel.from_pretrained(t5_model_name).train(enable_grad).requires_grad_(enable_grad).to(torch.float16)
+                self.tokenizer = AutoTokenizer.from_pretrained(model_source)
+                model = T5EncoderModel.from_pretrained(model_source).train(enable_grad).requires_grad_(enable_grad).to(torch.float16)
             finally:
                 logging.disable(previous_level)
             

@@ -16,8 +16,8 @@ setup(
         'einops-exts<=0.0.4',
         'ema-pytorch<=0.2.3',
         'encodec<=0.1.1',
-        'gradio>=3.42.0',
-        'huggingface_hub',
+        'gradio>=6.0.0,<7',
+        'huggingface_hub<2',
         'importlib-resources<=5.12.0',
         'k-diffusion<=0.1.1',
         'laion-clap<=1.1.4',
@@ -40,13 +40,12 @@ setup(
         'torchaudio>=2.0.2',
         'torchmetrics<=0.11.4',
         'tqdm',
-        'transformers',
+        'transformers>=4.40.0,<6',
         'v-diffusion-pytorch<=0.0.2',
         'vector-quantize-pytorch<=1.9.14',
         'wandb<=0.15.4',
         'webdataset<=0.2.48',
         'x-transformers<1.27.0',
-        'basic_pitch',
-        'hffs'
+        'basic_pitch'
     ],
 )

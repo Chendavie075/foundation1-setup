@@ -1,7 +1,7 @@
 {
     "models_directory": "models",
     "generations_directory": "generations",
-    "hffs": [{
+    "model_downloads": [{
         "path": "models",
         "options": [
             "RoyalCities/Foundation-1",

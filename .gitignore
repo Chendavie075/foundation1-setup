@@ -43,6 +43,7 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.cache/
 nosetests.xml
 coverage.xml
 *.cover
@@ -122,6 +123,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv/
 env/
 venv/
 ENV/
@@ -175,4 +177,5 @@ models/*
 !models/*.txt
 
 venv_upstream_style/
+start-foundation1.log
 
